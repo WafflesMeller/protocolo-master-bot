@@ -18,15 +18,41 @@ app.use(express.json());
 // 5. Webhook para recibir actualizaciones
 app.post('/webhook', async (req, res) => {
   console.log('Update recibido:', req.body);
-  // Confirmar recepción inmediatamente
+  // Confirmar recepción de la actualización
   res.sendStatus(200);
 
-  const message = req.body.message;
-  if (!message || !message.text) return;
+  const update = req.body;
 
-  const chatId = message.chat.id;
-  // Cualquier texto desencadena esta respuesta
-  try {
+  // 5.1. Manejar callback queries (botones)
+  if (update.callback_query) {
+    const { id: callbackQueryId, data } = update.callback_query;
+    const chatId = update.callback_query.message.chat.id;
+
+    // Responder al callback para quitar el spinner
+    await axios.post(`${TELEGRAM_API}/answerCallbackQuery`, {
+      callback_query_id: callbackQueryId
+    });
+
+    // Acciones según el botón presionado
+    if (data === 'GENERATE') {
+      await axios.post(`${TELEGRAM_API}/sendMessage`, {
+        chat_id: chatId,
+        text: '📂 Por favor, envía un archivo Excel (.xlsx) con dos columnas: "nombre" y "cargo".'
+      });
+    } else if (data === 'HELP') {
+      await axios.post(`${TELEGRAM_API}/sendMessage`, {
+        chat_id: chatId,
+        text: '📖 *Ayuda*: Presiona "Generar precedencias" o envía /generar para empezar.',
+        parse_mode: 'Markdown'
+      });
+    }
+    return;
+  }
+
+  // 5.2. Manejar mensajes de texto
+  const message = update.message;
+  if (message && message.text) {
+    const chatId = message.chat.id;
     await axios.post(`${TELEGRAM_API}/sendMessage`, {
       chat_id: chatId,
       text: '👋 Soy el Bot de Generador de Precedencias. Puedo ayudarte a convertir tu Excel en un PDF de tarjetas de precedencia.',
@@ -39,8 +65,6 @@ app.post('/webhook', async (req, res) => {
         ]
       }
     });
-  } catch (error) {
-    console.error('Error al enviar respuesta:', error);
   }
 });
 

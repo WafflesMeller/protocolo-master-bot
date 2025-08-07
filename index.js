@@ -1,54 +1,48 @@
 // index.js
 
-// 1. Importar las librerías necesarias
+// 1. Cargar variables de entorno
+require('dotenv').config();
+
+// 2. Importar librerías necesarias
 const express = require('express');
 const axios = require('axios');
 
-// 2. Obtener el token del bot de las variables de entorno
-// Es una mala práctica poner el token directamente en el código.
-// Render nos permitirá configurar esta variable de forma segura.
+// 3. Token y endpoint de Telegram
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
-// 3. Crear nuestra aplicación de Express
-const app = express();
-// Telegram envía los datos en formato JSON, necesitamos que Express lo entienda.
+// 4. Crear aplicación de Express\const app = express();
 app.use(express.json());
 
-// 4. Crear la ruta para el webhook
-// Esta es la URL que Telegram llamará cada vez que alguien envíe un mensaje al bot.
+// 5. Webhook para recibir actualizaciones
 app.post('/webhook', async (req, res) => {
-  console.log('Mensaje recibido:', req.body);
-
-  // Extraemos la información importante del mensaje que nos envía Telegram
-  const message = req.body.message;
-
-  // A veces, Telegram puede enviar otras actualizaciones, nos aseguramos de que sea un mensaje.
-  if (message) {
-    const chatId = message.chat.id;
-    const text = message.text;
-
-    console.log(`Mensaje de ${chatId}: "${text}"`);
-
-    // Aquí va la lógica de nuestro bot.
-    // Por ahora, simplemente responde con "Hola".
-    try {
-      await axios.post(`${TELEGRAM_API}/sendMessage`, {
-        chat_id: chatId,
-        text: 'Hola',
-      });
-      console.log('Respuesta enviada');
-    } catch (error) {
-      console.error('Error al enviar respuesta:', error);
-    }
-  }
-
-  // Respondemos a Telegram para confirmar que recibimos el mensaje correctamente.
+  console.log('Update recibido:', req.body);
+  // Confirmar recepción inmediatamente
   res.sendStatus(200);
+
+  const message = req.body.message;
+  if (!message || !message.text) return;
+
+  const chatId = message.chat.id;
+  // Cualquier texto desencadena esta respuesta
+  try {
+    await axios.post(`${TELEGRAM_API}/sendMessage`, {
+      chat_id: chatId,
+      text: '👋 Soy el Bot de Generador de Precedencias. Puedo ayudarte a convertir tu Excel en un PDF de tarjetas de precedencia.',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: 'Generar precedencias', callback_data: 'GENERATE' },
+            { text: 'Ayuda', callback_data: 'HELP' }
+          ]
+        ]
+      }
+    });
+  } catch (error) {
+    console.error('Error al enviar respuesta:', error);
+  }
 });
 
-// 5. Iniciar el servidor
+// 6. Iniciar servidor
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en el puerto ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));

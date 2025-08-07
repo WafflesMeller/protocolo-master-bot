@@ -11,7 +11,8 @@ const axios = require('axios');
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
-// 4. Crear aplicación de Express\const app = express();
+// 4. Crear aplicación de Express
+const app = express();
 app.use(express.json());
 
 // 5. Webhook para recibir actualizaciones

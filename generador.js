@@ -1,150 +1,166 @@
 // generador.js
 
-/*
-Generador de precedencias - generador.js 
+/**
+ * Generador de precedencias - generador.js
+ *
+ * Este script:
+ *   1) Lee un archivo Excel (.xlsx/.xls) con columnas “nombre” y “cargo”.
+ *   2) Genera un HTML con tarjetas formateadas.
+ *   3) Convierte ese HTML a PDF usando Puppeteer.
+ *
+ * Uso:
+ *   node generador.js <input.xlsx> <logo.png> <output.pdf>
+ */
 
-Este script lee un archivo Excel (.xlsx o .xls) con columnas que contengan 'nombre' y 'cargo',
-con independencia de mayúsculas/minúsculas, y genera:
-  1) un archivo HTML con un formato de "tarjetas" para imprimir reservaciones de silla, incluyendo un logo a la izquierda.
-  2) un PDF con todas las tarjetas, usando Puppeteer.
-
-Adicionalmente, ajusta dinámicamente el tamaño de fuente de cada campo (nombre o cargo) por separado
-si su contenido excede el espacio asignado en la tarjeta, y dibuja marcas de corte completas (líneas punteadas)
-entre tarjetas para facilitar el recorte tras la impresión.
-
-Uso:
-  1. Instalar dependencias:
-     npm init -y
-     npm install xlsx puppeteer fs path
-
-  2. Ejecutar:
-     node generador.js datos.xlsx logo.png output.pdf
-*/
-
+// 1. Importar módulos
 const fs = require('fs');
 const path = require('path');
 const xlsx = require('xlsx');
-const pdf = require('html-pdf');
-// const puppeteer = require('puppeteer');  // Ya no usamos Puppeteer para PDF
+const puppeteer = require('puppeteer');
 
-async function main() {
-  const [,, inputFile, logoFile, outputPdf] = process.argv;
-  if (!inputFile || !logoFile || !outputPdf) {
+// Parámetros de la tarjeta
+const CARD = { width: 370, height: 120, gap: 30, padding: 20 };
+
+// CSS para las tarjetas
+const CSS = `
+<style>
+  body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+  .page {
+    page-break-after: always;
+    display: flex;
+    flex-wrap: wrap;
+    gap: ${CARD.gap}px;
+    padding: ${CARD.padding/2}px ${CARD.padding}px;
+    justify-content: center;
+    align-items: center;
+  }
+  .card {
+    width: ${CARD.width}px;
+    height: ${CARD.height}px;
+    border: 2px solid #0737AA;
+    box-sizing: border-box;
+    padding: 8px;
+    display: flex;
+    align-items: center;
+    position: relative;
+  }
+  .logo { width: 110px; margin-right: 12px; flex-shrink: 0; }
+  .text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+  }
+  .name { font-weight: bold; font-size: 18px; margin-bottom: 4px; }
+  .position { font-size: 14px; }
+  /* Márgenes de corte punteados */
+  .card::after { content: ''; position: absolute; right: -17px; top: -15px;
+    height: calc(100% + ${CARD.gap}px); border-left: 1px dashed #999; }
+  .card:nth-child(2n)::after { content: none; }
+  .card::before { content: ''; position: absolute; left: -15px; bottom: -${CARD.gap}px;
+    width: calc(100% + ${CARD.gap}px); border-top: 1px dashed #999; }
+  .page .card:nth-last-child(-n+2)::before { content: none; }
+</style>`;
+
+// Script para ajustar fuente si excede espacio
+const SCRIPT = `
+<script>
+  window.addEventListener('load', ()=>{
+    document.querySelectorAll('.card').forEach(card => {
+      ['name','position'].forEach(cls => {
+        const el = card.querySelector('.'+cls);
+        const parent = el.parentElement;
+        let fs = parseInt(getComputedStyle(el).fontSize);
+        while(fs > 6 && (el.scrollWidth > parent.clientWidth ||
+                         el.scrollHeight > parent.clientHeight/2)){
+          el.style.fontSize = (--fs) + 'px';
+        }
+      });
+    });
+  });
+</script>`;
+
+/**
+ * main: flujo principal
+ */
+async function main(){
+  const [,, inFile, logoFile, outFile] = process.argv;
+  if(!inFile || !logoFile || !outFile) {
     console.error('Uso: node generador.js <input.xlsx> <logo.png> <output.pdf>');
     process.exit(1);
   }
 
-  // Leer workbook de Excel
-  const workbook = xlsx.readFile(inputFile);
-  const sheetName = workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
+  // 2. Leer Excel
+  const wb = xlsx.readFile(inFile);
+  const sheet = wb.Sheets[wb.SheetNames[0]];
   const rows = xlsx.utils.sheet_to_json(sheet, { defval: '' });
-
-  if (rows.length === 0) {
-    console.error('El archivo Excel está vacío o no se pudo leer.');
+  if(!rows.length) {
+    console.error('Excel vacío o no legible.');
     process.exit(1);
   }
 
-  // Detectar dinámicamente los campos de nombre y cargo (case-insensitive)
-  const headers = Object.keys(rows[0]);
-  let nombreField = headers.find(h => h.toLowerCase().includes('nombre'));
-  let cargoField  = headers.find(h => h.toLowerCase().includes('cargo'));
-  if (!nombreField || !cargoField) {
-    if (headers.length === 2) {
-      nombreField = headers[0];
-      cargoField  = headers[1];
-      console.warn('No se detectaron encabezados "nombre" o "cargo". Usando primeras dos columnas.');
-    } else {
-      console.error('Encabezados inválidos. Se requieren columnas "nombre" y "cargo" o exactamente 2 columnas.');
-      process.exit(1);
-    }
+  // 3. Detectar encabezados
+  const hdr = Object.keys(rows[0]);
+  let nKey = hdr.find(h=>/nombre/i.test(h));
+  let cKey = hdr.find(h=>/cargo/i.test(h));
+  if(!nKey||!cKey){
+    if(hdr.length===2) [nKey,cKey]=hdr;
+    else { console.error('Encabezados inválidos.'); process.exit(1);}  
   }
-  console.log(`Usando columnas: nombre -> "${nombreField}", cargo -> "${cargoField}"`);
 
-  // Generar HTML intermedio
+  // 4. Preparar datos normalizados
+  const data = rows.map(r=>({
+    name: String(r[nKey]).toUpperCase(),
+    position: String(r[cKey]).toUpperCase()
+  }));
+
+  // 5. Generar HTML
   const logoPath = path.resolve(__dirname, logoFile);
-  const html     = buildHtml(rows, nombreField, cargoField, logoPath);
-  const htmlFile = path.join(__dirname, 'precedes.html');
-  fs.writeFileSync(htmlFile, html, 'utf8');
-  console.log(`HTML generado: ${htmlFile}`);
+  const html = `<!doctype html><html><head><meta charset="utf-8">${CSS}${SCRIPT}</head><body>${paginate(data,logoPath)}</body></html>`;
+  fs.writeFileSync('precedes.html', html);
+  console.log('HTML generado: precedes.html');
 
-  // Generar PDF usando Puppeteer
-  await generatePdf(htmlFile, outputPdf);
-  console.log(`PDF generado: ${outputPdf}`);
+  // 6. Convertir a PDF
+  await generatePdf('precedes.html', outFile);
+  console.log(`PDF generado: ${outFile}`);
 }
 
-function buildHtml(data, nombreKey, cargoKey, logoPath) {
-  const logoUrl = 'file://' + logoPath;
-  const cardWidth  = 370;
-  const cardHeight = 120;
-  const gap        = 30;
-  const padding    = 20;
-  const style = `
-    <style>
-      body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
-      .page { page-break-after: always; padding: ${padding/2}px ${padding}px; display: flex; justify-content: center; flex-wrap: wrap; gap: ${gap}px; align-items: center; }
-      .card { width: ${cardWidth}px; height: ${cardHeight}px; border: 2px solid #0737AA; box-sizing: border-box; padding: 8px; display: flex; align-items: center; position: relative; }
-      .page .card:last-child:nth-child(odd) { margin-right: auto; margin-left: 3px; }
-      .card::after { content: ''; position: absolute; right: -17px; top: -15px; height: calc(100% + 32px); border-left: 1px dashed #999; }
-      .card:nth-child(2n)::after { content: none; }
-      .card::before { content: ''; position: absolute; left: -15px; bottom: -17px; width: calc(100% + 32px); border-top: 1px dashed #999; }
-      .page .card:nth-last-child(-n+2)::before { content: none; }
-      .logo { align-self: center; flex-shrink: 0; width: 110px; height: auto; margin-right: 12px; }
-      .text { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; width: calc(100% - 100px - 12px); height: 100%; }
-      .name { font-weight: bold; font-size: 18px; line-height: 1.2; margin-bottom: 4px; word-break: break-word; }
-      .position { font-size: 14px; line-height: 1.2; word-break: break-word; }
-    </style>`;
-  const adjustScript = `
-    <script>
-      window.addEventListener('load', () => {
-        document.querySelectorAll('.card').forEach(card => {
-          ['name', 'position'].forEach(cls => {
-            const el = card.querySelector('.' + cls);
-            const container = el.parentElement;
-            let fontSize = parseInt(window.getComputedStyle(el).fontSize);
-            while (fontSize > 6 && (el.scrollWidth > container.clientWidth || el.scrollHeight > container.clientHeight/2)) {
-              fontSize--;
-              el.style.fontSize = fontSize + 'px';
-            }
-          });
-        });
-      });
-    </script>`;
-  const pages = [];
-  for (let i = 0; i < data.length; i += 14) pages.push(data.slice(i, i + 14));
-  const pagesHtml = pages.map(pageData => {
-    const cards = pageData.map(row => {
-      const nombre = escapeHtml(String(row[nombreKey] || '').toUpperCase());
-      const cargo  = escapeHtml(String(row[cargoKey]  || '').toUpperCase());
-      return `<div class="card"><img class="logo" src="${logoUrl}"/><div class="text"><div class="name">${nombre}</div><div class="position">${cargo}</div></div></div>`;
-    }).join('');
-    return `<div class="page">${cards}</div>`;
-  }).join('');
-  return `<!DOCTYPE html><html><head><meta charset="utf-8">${style}${adjustScript}<title>Precedencias</title></head><body>${pagesHtml}</body></html>`;
+/**
+ * paginate: divide en páginas de 14 tarjetas
+ */
+function paginate(arr, logo){
+  return arr.reduce((acc,cur,i)=>{
+    if(i%14===0) acc+='<div class="page">';
+    acc+=`<div class="card">`+
+         `<img class="logo" src="file://${logo}"/>`+
+         `<div class="text"><div class="name">${escape(cur.name)}</div>`+
+         `<div class="position">${escape(cur.position)}</div></div></div>`;
+    if(i%14===13||i===arr.length-1) acc+='</div>';
+    return acc;
+  }, '');
 }
 
-function escapeHtml(text) {
-  return String(text).replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'' :'&#39;' })[m]);
+/**
+ * escape: evita HTML no deseado
+ */
+function escape(s){
+  return String(s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[m]);
 }
 
-async function generatePdf(htmlPath, outputPdf) {
-  // Leer el HTML generado
-  const html = fs.readFileSync(htmlPath, 'utf8');
-  // Crear PDF usando html-pdf
-  return new Promise((resolve, reject) => {
-    pdf.create(html, { format: 'Letter', border: '0' })
-      .toFile(outputPdf, (err, res) => {
-        if (err) return reject(err);
-        resolve(res);
-      });
+/**
+ * generatePdf: usa Puppeteer para crear el PDF
+ */
+async function generatePdf(htmlFile, outFile){
+  const browser = await puppeteer.launch({
+    args:['--no-sandbox','--disable-setuid-sandbox'],headless:true
   });
+  const page = await browser.newPage();
+  await page.goto(`file://${path.resolve(htmlFile)}`,{waitUntil:'networkidle0'});
+  await page.pdf({path:outFile,format:'Letter',printBackground:true});
+  await browser.close();
 }
 
-main().catch(err => {
-  console.error(err);
-  process.exit(1);
-});(err => {
-  console.error(err);
-  process.exit(1);
-});
-
+// Ejecutar
+main().catch(err=>{ console.error('Error:',err); process.exit(1); });

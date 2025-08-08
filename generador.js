@@ -70,6 +70,7 @@ function generatePdf(data, logoFile, outputPdf) {
     const stream = fs.createWriteStream(outputPdf);
     doc.pipe(stream);
 
+    // Calcular columnas y filas
     const pageWidth = doc.page.width;
     const pageHeight = doc.page.height;
     const columns = Math.floor((pageWidth - 2 * CARD.margin + CARD.gapX) / (CARD.width + CARD.gapX));
@@ -77,17 +78,22 @@ function generatePdf(data, logoFile, outputPdf) {
     const itemsPerPage = columns * rowsCount;
     const logoPath = path.resolve(__dirname, logoFile);
 
-    // Dividir en páginas
-    for (let p = 0; p * itemsPerPage < data.length; p++) {
-      if (p > 0) doc.addPage();
-      const pageItems = data.slice(p * itemsPerPage, p * itemsPerPage + itemsPerPage);
+    // Dividir datos en páginas
+    const pages = [];
+    for (let i = 0; i < data.length; i += itemsPerPage) {
+      pages.push(data.slice(i, i + itemsPerPage));
+    }
+
+    // Procesar cada página
+    pages.forEach((pageItems, pageIndex) => {
+      if (pageIndex > 0) doc.addPage();
       pageItems.forEach((item, idx) => {
         const col = idx % columns;
         const row = Math.floor(idx / columns);
         const x = CARD.margin + col * (CARD.width + CARD.gapX);
         const y = CARD.margin + row * (CARD.height + CARD.gapY);
 
-        // Dibujar borde de tarjeta
+        // Borde de tarjeta
         doc.save()
            .lineWidth(2)
            .strokeColor('#0737AA')
@@ -95,46 +101,70 @@ function generatePdf(data, logoFile, outputPdf) {
            .stroke()
            .restore();
 
-        // Insertar logo
+        // Logo
         try {
           doc.image(logoPath, x + 8, y + 8, { width: 80 });
         } catch {}
 
+        // Área de texto
         const textX = x + 8 + 80 + 10;
         const textW = CARD.width - (80 + 18);
-
-        // Ajuste dinámico de nombre
-        let nameSize = 14;
-        doc.font('Helvetica-Bold').fontSize(nameSize);
-        while (doc.widthOfString(item.name) > textW && nameSize > 6) {
-          nameSize -= 1;
-          doc.fontSize(nameSize);
-        }
-        const nameHeight = doc.heightOfString(item.name, { width: textW, align: 'center' });
-
-        // Ajuste dinámico de cargo
-        let posSize = 10;
-        doc.font('Helvetica').fontSize(posSize);
-        while (doc.widthOfString(item.position) > textW && posSize > 6) {
-          posSize -= 1;
-          doc.fontSize(posSize);
-        }
-        const posHeight = doc.heightOfString(item.position, { width: textW, align: 'center' });
-
-        // Calcular posición vertical centrada
         const spacing = 4;
+
+        // Ajuste dinámico de nombre (hasta 2 líneas)
+        const initialNameSize = 14;
+        let nameSize = initialNameSize;
+        const minNameSize = 6;
+        let nameHeight;
+        let twoLineNameSize = nameSize;
+        while (nameSize >= minNameSize) {
+          doc.font('Helvetica-Bold').fontSize(nameSize);
+          nameHeight = doc.heightOfString(item.name, { width: textW, align: 'center' });
+          const lines = Math.ceil(nameHeight / nameSize);
+          if (lines <= 2) { twoLineNameSize = nameSize; break; }
+          nameSize--;
+        }
+        // Revertir si solo cabe una línea pero hubo tamaño con dos líneas
+        doc.font('Helvetica-Bold').fontSize(nameSize);
+        nameHeight = doc.heightOfString(item.name, { width: textW, align: 'center' });
+        if (Math.ceil(nameHeight / nameSize) < 2) {
+          nameSize = twoLineNameSize;
+          doc.font('Helvetica-Bold').fontSize(nameSize);
+          nameHeight = doc.heightOfString(item.name, { width: textW, align: 'center' });
+        }
+
+        // Ajuste dinámico de cargo (hasta 2 líneas)
+        const initialPosSize = 10;
+        let posSize = initialPosSize;
+        const minPosSize = 6;
+        let posHeight;
+        let twoLinePosSize = posSize;
+        while (posSize >= minPosSize) {
+          doc.font('Helvetica').fontSize(posSize);
+          posHeight = doc.heightOfString(item.position, { width: textW, align: 'center' });
+          const lines = Math.ceil(posHeight / posSize);
+          if (lines <= 2) { twoLinePosSize = posSize; break; }
+          posSize--;
+        }
+        doc.font('Helvetica').fontSize(posSize);
+        posHeight = doc.heightOfString(item.position, { width: textW, align: 'center' });
+        if (Math.ceil(posHeight / posSize) < 2) {
+          posSize = twoLinePosSize;
+          doc.font('Helvetica').fontSize(posSize);
+          posHeight = doc.heightOfString(item.position, { width: textW, align: 'center' });
+        }
+
+        // Calcular posición vertical centrada del bloque texto
         const totalTextHeight = nameHeight + spacing + posHeight;
         const textY = y + (CARD.height - totalTextHeight) / 2;
 
-        // Dibujar nombre
+        // Dibujar nombre y cargo
         doc.font('Helvetica-Bold').fontSize(nameSize)
            .text(item.name, textX, textY, { width: textW, align: 'center' });
-
-        // Dibujar cargo
         doc.font('Helvetica').fontSize(posSize)
            .text(item.position, textX, textY + nameHeight + spacing, { width: textW, align: 'center' });
       });
-    }
+    });
 
     doc.end();
     stream.on('finish', resolve);

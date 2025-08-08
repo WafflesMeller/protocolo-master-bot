@@ -11,24 +11,23 @@
  *   node generador.js <input.xlsx> <logo.png> <output.pdf>
  */
 
-// 1. Importar módulos necesarios
 const fs = require('fs');
 const path = require('path');
 const xlsx = require('xlsx');
 const PDFDocument = require('pdfkit');
 
-// 2. Parámetros de diseño de la tarjeta
+// Parámetros de diseño de la tarjeta (ajustados para caber en Letter)
 const CARD = {
-  width: 340,
-  height: 100,
-  columns: 2,
-  rows: 7,
-  gapX: 20,
-  gapY: 20,
-  margin: 20
+  width: 250,    // ancho reducido
+  height: 80,    // alto reducido
+  columns: 2,    // 2 columnas por página
+  rows: 7,       // 7 filas por página
+  gapX: 20,      // espacio horizontal
+  gapY: 15,      // espacio vertical
+  margin: 15     // margen de página
 };
 
-// 3. Función principal
+// Función principal
 async function main() {
   const [,, inputFile, logoFile, outputPdf] = process.argv;
   if (!inputFile || !logoFile || !outputPdf) {
@@ -36,7 +35,7 @@ async function main() {
     process.exit(1);
   }
 
-  // 3.1. Leer y parsear Excel
+  // Leer Excel
   const workbook = xlsx.readFile(inputFile);
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rows = xlsx.utils.sheet_to_json(sheet, { defval: '' });
@@ -45,7 +44,7 @@ async function main() {
     process.exit(1);
   }
 
-  // 3.2. Detectar campos nombre/cargo
+  // Detectar encabezados
   const headers = Object.keys(rows[0]);
   let nombreKey = headers.find(h => /nombre/i.test(h));
   let cargoKey  = headers.find(h => /cargo/i.test(h));
@@ -57,30 +56,25 @@ async function main() {
     }
   }
 
-  // 3.3. Normalizar datos
+  // Normalizar datos
   const data = rows.map(r => ({
     name: String(r[nombreKey] || '').toUpperCase(),
     position: String(r[cargoKey]  || '').toUpperCase()
   }));
 
-  // 4. Generar PDF
+  // Generar PDF
   await generatePdf(data, logoFile, outputPdf);
   console.log(`PDF generado: ${outputPdf}`);
 }
 
-/**
- * generatePdf: crea un PDF con tarjetas usando PDFKit
- */
+// Función que crea el PDF usando PDFKit
 function generatePdf(data, logoFile, outputPdf) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'LETTER', margin: CARD.margin });
     const stream = fs.createWriteStream(outputPdf);
     doc.pipe(stream);
 
-    // Cargar logo
     const logoPath = path.resolve(__dirname, logoFile);
-
-    // Coordenadas iniciales
     const startX = CARD.margin;
     const startY = CARD.margin;
 
@@ -88,7 +82,6 @@ function generatePdf(data, logoFile, outputPdf) {
       const col = idx % CARD.columns;
       const row = Math.floor((idx / CARD.columns) % CARD.rows);
 
-      // Nueva página si corresponde
       if (idx > 0 && idx % (CARD.columns * CARD.rows) === 0) {
         doc.addPage();
       }
@@ -96,7 +89,7 @@ function generatePdf(data, logoFile, outputPdf) {
       const x = startX + col * (CARD.width + CARD.gapX);
       const y = startY + row * (CARD.height + CARD.gapY);
 
-      // Dibujar borde de tarjeta
+      // Borde de tarjeta
       doc.save()
          .lineWidth(2)
          .strokeColor('#0737AA')
@@ -104,27 +97,23 @@ function generatePdf(data, logoFile, outputPdf) {
          .stroke()
          .restore();
 
-      // Insertar logo
+      // Logo
       try {
-        doc.image(logoPath, x + 8, y + 8, { width: 110 });
-      } catch (e) {
-        console.warn('No se pudo cargar logo:', e.message);
-      }
+        doc.image(logoPath, x + 8, y + 8, { width: 80 });
+      } catch {}
 
-      // Texto: Nombre
-      const textX = x + 8 + 110 + 12;
-      const textWidth = CARD.width - (110 + 28);
+      const textX = x + 8 + 80 + 10;
+      const textW = CARD.width - (80 + 18);
+      // Nombre
       doc.font('Helvetica-Bold')
-         .fontSize(18)
-         .text(item.name, textX, y + 20, { width: textWidth, align: 'center' });
-
-      // Texto: Cargo
-      doc.font('Helvetica')
          .fontSize(14)
-         .text(item.position, textX, y + 60, { width: textWidth, align: 'center' });
+         .text(item.name, textX, y + 15, { width: textW, align: 'center' });
+      // Cargo
+      doc.font('Helvetica')
+         .fontSize(10)
+         .text(item.position, textX, y + 40, { width: textW, align: 'center' });
     });
 
-    // Finalizar documento
     doc.end();
     stream.on('finish', resolve);
     stream.on('error', reject);

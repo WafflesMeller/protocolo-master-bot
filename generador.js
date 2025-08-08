@@ -111,48 +111,35 @@ function generatePdf(data, logoFile, outputPdf) {
         const textW = CARD.width - (80 + 18);
         const spacing = 4;
 
-        // Ajuste dinámico de nombre (hasta 2 líneas)
-        const initialNameSize = 14;
-        let nameSize = initialNameSize;
+                // Ajuste dinámico de nombre (hasta 2 líneas usando currentLineHeight)
+        let nameSize = 14;
         const minNameSize = 6;
-        let nameHeight;
-        let twoLineNameSize = nameSize;
+        let nameHeight, lineHeight;
         while (nameSize >= minNameSize) {
           doc.font('Helvetica-Bold').fontSize(nameSize);
+          lineHeight = doc.currentLineHeight();
           nameHeight = doc.heightOfString(item.name, { width: textW, align: 'center' });
-          const lines = Math.ceil(nameHeight / nameSize);
-          if (lines <= 2) { twoLineNameSize = nameSize; break; }
+          const lines = Math.ceil(nameHeight / lineHeight);
+          if (lines <= 2) break;
           nameSize--;
         }
-        // Revertir si solo cabe una línea pero hubo tamaño con dos líneas
         doc.font('Helvetica-Bold').fontSize(nameSize);
         nameHeight = doc.heightOfString(item.name, { width: textW, align: 'center' });
-        if (Math.ceil(nameHeight / nameSize) < 2) {
-          nameSize = twoLineNameSize;
-          doc.font('Helvetica-Bold').fontSize(nameSize);
-          nameHeight = doc.heightOfString(item.name, { width: textW, align: 'center' });
-        }
 
         // Ajuste dinámico de cargo (hasta 2 líneas)
-        const initialPosSize = 10;
-        let posSize = initialPosSize;
+        let posSize = 10;
         const minPosSize = 6;
         let posHeight;
-        let twoLinePosSize = posSize;
         while (posSize >= minPosSize) {
           doc.font('Helvetica').fontSize(posSize);
+          lineHeight = doc.currentLineHeight();
           posHeight = doc.heightOfString(item.position, { width: textW, align: 'center' });
-          const lines = Math.ceil(posHeight / posSize);
-          if (lines <= 2) { twoLinePosSize = posSize; break; }
+          const lines = Math.ceil(posHeight / lineHeight);
+          if (lines <= 2) break;
           posSize--;
         }
         doc.font('Helvetica').fontSize(posSize);
         posHeight = doc.heightOfString(item.position, { width: textW, align: 'center' });
-        if (Math.ceil(posHeight / posSize) < 2) {
-          posSize = twoLinePosSize;
-          doc.font('Helvetica').fontSize(posSize);
-          posHeight = doc.heightOfString(item.position, { width: textW, align: 'center' });
-        }
 
         // Calcular posición vertical centrada del bloque texto
         const totalTextHeight = nameHeight + spacing + posHeight;

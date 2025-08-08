@@ -106,37 +106,36 @@ function generatePdf(data, logoFile, outputPdf) {
           doc.image(logoPath, x + 8, y + 8, { width: 80 });
         } catch {}
 
-        // Área de texto
-        const textX = x + 8 + 80 + 10;
-        const textW = CARD.width - (80 + 18);
+                // Área de texto con margen interno derecho
+        const textPaddingLeft = 10;
+        const textPaddingRight = 10;
+        const textX = x + 8 + 80 + textPaddingLeft;
+        const textW = CARD.width - (80 + 8 + textPaddingLeft + textPaddingRight);
         const spacing = 4;
 
-                // Ajuste dinámico de nombre (hasta 2 líneas usando currentLineHeight)
+                        // Ajuste dinámico de nombre (máximo 2 líneas)
         let nameSize = 14;
         const minNameSize = 6;
-        let nameHeight, lineHeight;
-        while (nameSize >= minNameSize) {
-          doc.font('Helvetica-Bold').fontSize(nameSize);
-          lineHeight = doc.currentLineHeight();
+        let nameHeight;
+        // Encontrar el tamaño máximo que permita hasta 2 líneas, asumiendo interlineado 1.2
+        for (let sz = nameSize; sz >= minNameSize; sz--) {
+          doc.font('Helvetica-Bold').fontSize(sz);
           nameHeight = doc.heightOfString(item.name, { width: textW, align: 'center' });
-          const lines = Math.ceil(nameHeight / lineHeight);
-          if (lines <= 2) break;
-          nameSize--;
+          const lineSpacing = sz * 1.2;
+          if (nameHeight <= lineSpacing * 2) { nameSize = sz; break; }
         }
         doc.font('Helvetica-Bold').fontSize(nameSize);
         nameHeight = doc.heightOfString(item.name, { width: textW, align: 'center' });
 
-        // Ajuste dinámico de cargo (hasta 2 líneas)
+        // Ajuste dinámico de cargo (máximo 2 líneas)
         let posSize = 10;
         const minPosSize = 6;
         let posHeight;
-        while (posSize >= minPosSize) {
-          doc.font('Helvetica').fontSize(posSize);
-          lineHeight = doc.currentLineHeight();
+        for (let sz = posSize; sz >= minPosSize; sz--) {
+          doc.font('Helvetica').fontSize(sz);
           posHeight = doc.heightOfString(item.position, { width: textW, align: 'center' });
-          const lines = Math.ceil(posHeight / lineHeight);
-          if (lines <= 2) break;
-          posSize--;
+          const lineSpacing = sz * 1.2;
+          if (posHeight <= lineSpacing * 2) { posSize = sz; break; }
         }
         doc.font('Helvetica').fontSize(posSize);
         posHeight = doc.heightOfString(item.position, { width: textW, align: 'center' });

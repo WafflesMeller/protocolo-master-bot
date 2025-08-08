@@ -18,14 +18,14 @@ const xlsx = require('xlsx');
 const PDFDocument = require('pdfkit');
 
 // Parámetros de diseño de la tarjeta
-typedef CARD_PARAM = { width: number, height: number, gapX: number, gapY: number, margin: number };
-const CARD = /** @type {CARD_PARAM} */ ({
+
+const CARD = {
   width: 280,
   height: 95,
   gapX: 20,
   gapY: 15,
   margin: 15
-});
+};
 
 async function main() {
   const [,, inputFile, logoFile, outputPdf] = process.argv;

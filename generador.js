@@ -1,5 +1,7 @@
+// generador.js
+
 /*
-Generador de precedencias - generador.js
+Generador de precedencias - generador.js 
 
 Este script lee un archivo Excel (.xlsx o .xls) con columnas que contengan 'nombre' y 'cargo',
 con independencia de mayúsculas/minúsculas, y genera:
@@ -27,7 +29,7 @@ const puppeteer = require('puppeteer');
 async function main() {
   const [,, inputFile, logoFile, outputPdf] = process.argv;
   if (!inputFile || !logoFile || !outputPdf) {
-    console.error('Uso: node index.js <input.xlsx> <logo.png> <output.pdf>');
+    console.error('Uso: node generador.js <input.xlsx> <logo.png> <output.pdf>');
     process.exit(1);
   }
 
@@ -42,40 +44,41 @@ async function main() {
     process.exit(1);
   }
 
-  // Detectar dinámicamente los campos de nombre y cargo (case-insensitive)  
-  const headers = Object.keys(rows[0]);  
-  let nombreField = headers.find(h => h.toLowerCase().includes('nombre'));  
-  let cargoField = headers.find(h => h.toLowerCase().includes('cargo'));  
-  if (!nombreField || !cargoField) {  
-    // Si no se detectan nombres de columna, validar cantidad exacta de 2 columnas  
-    if (headers.length === 2) {  
-      nombreField = headers[0];  
-      cargoField = headers[1];  
-      console.warn('No se detectaron encabezados "nombre" o "cargo". Usando primeras dos columnas.');  
-    } else {  
-      console.error('Encabezados inválidos. Se requieren columnas "nombre" y "cargo" o exactamente 2 columnas.');  
-      process.exit(1);  
-    }  
-  }  
-  console.log(`Usando columnas: nombre -> "${nombreField}", cargo -> "${cargoField}"`);(`Usando columnas: nombre -> "${nombreField}", cargo -> "${cargoField}"`);
+  // Detectar dinámicamente los campos de nombre y cargo (case-insensitive)
+  const headers = Object.keys(rows[0]);
+  let nombreField = headers.find(h => h.toLowerCase().includes('nombre'));
+  let cargoField  = headers.find(h => h.toLowerCase().includes('cargo'));
+  if (!nombreField || !cargoField) {
+    // Si no se detectan encabezados, validar exactamente 2 columnas
+    if (headers.length === 2) {
+      nombreField = headers[0];
+      cargoField  = headers[1];
+      console.warn('No se detectaron encabezados "nombre" o "cargo". Usando primeras dos columnas.');
+    } else {
+      console.error('Encabezados inválidos. Se requieren columnas "nombre" y "cargo" o exactamente 2 columnas.');
+      process.exit(1);
+    }
+  }
+  console.log(`Usando columnas: nombre -> "${nombreField}", cargo -> "${cargoField}"`);
 
-  // Generar HTML y PDF
+  // Generar HTML intermedio
   const logoPath = path.resolve(__dirname, logoFile);
-  const html = buildHtml(rows, nombreField, cargoField, logoPath);
+  const html     = buildHtml(rows, nombreField, cargoField, logoPath);
   const htmlFile = path.join(__dirname, 'precedes.html');
   fs.writeFileSync(htmlFile, html, 'utf8');
   console.log(`HTML generado: ${htmlFile}`);
 
+  // Generar PDF usando Puppeteer
   await generatePdf(htmlFile, outputPdf);
   console.log(`PDF generado: ${outputPdf}`);
 }
 
 function buildHtml(data, nombreKey, cargoKey, logoPath) {
   const logoUrl = 'file://' + logoPath;
-  const cardWidth = 370; // Ancho de cada tarjeta
-  const cardHeight = 120; // Alto de cada tarjeta
-  const gap = 30; // Espacio entre tarjetas
-  const padding = 20; // Margen interno de cada tarjeta
+  const cardWidth  = 370;
+  const cardHeight = 120;
+  const gap        = 30;
+  const padding    = 20;
 
   const style = `
     <style>
@@ -99,12 +102,10 @@ function buildHtml(data, nombreKey, cargoKey, logoPath) {
         align-items: center;
         position: relative;
       }
-      /* Alinear último card a la izquierda si es impar */
       .page .card:last-child:nth-child(odd) {
         margin-right: auto;
         margin-left: 3px;
       }
-      /* Líneas de recorte entre tarjetas */
       .card::after {
         content: '';
         position: absolute;
@@ -113,10 +114,7 @@ function buildHtml(data, nombreKey, cargoKey, logoPath) {
         height: calc(100% + 32px);
         border-left: 1px dashed #999;
       }
-      /* Ocultar línea vertical en cada 2º card */
-      .card:nth-child(2n)::after {
-        content: none;
-      }
+      .card:nth-child(2n)::after { content: none; }
       .card::before {
         content: '';
         position: absolute;
@@ -125,10 +123,7 @@ function buildHtml(data, nombreKey, cargoKey, logoPath) {
         width: calc(100% + 32px);
         border-top: 1px dashed #999;
       }
-      /* Ocultar línea horizontal en los últimos 2 cards de cada página */
-      .page .card:nth-last-child(-n+2)::before {
-        content: none;
-      }
+      .page .card:nth-last-child(-n+2)::before { content: none; }
       .logo {
         align-self: center;
         flex-shrink: 0;
@@ -167,7 +162,7 @@ function buildHtml(data, nombreKey, cargoKey, logoPath) {
             const el = card.querySelector('.' + cls);
             const container = el.parentElement;
             let fontSize = parseInt(window.getComputedStyle(el).fontSize);
-            while (fontSize > 6 && (el.scrollWidth > container.clientWidth || el.scrollHeight > container.clientHeight / 2)) {
+            while (fontSize > 6 && (el.scrollWidth > container.clientWidth || el.scrollHeight > container.clientHeight/2)) {
               fontSize--;
               el.style.fontSize = fontSize + 'px';
             }
@@ -176,17 +171,16 @@ function buildHtml(data, nombreKey, cargoKey, logoPath) {
       });
     </script>`;
 
-  // // Agrupar en páginas de 14 tarjetas (7 filas x 2 columnas)
+  // Agrupar en páginas de 14 tarjetas (7 filas x 2 columnas)
   const pages = [];
   for (let i = 0; i < data.length; i += 14) {
     pages.push(data.slice(i, i + 14));
   }
 
-  // Construir HTML por página
   const pagesHtml = pages.map(pageData => {
     const cards = pageData.map(row => {
       const nombre = escapeHtml(String(row[nombreKey] || '').toUpperCase());
-      const cargo  = escapeHtml(String(row[cargoKey] || '').toUpperCase());
+      const cargo  = escapeHtml(String(row[cargoKey]  || '').toUpperCase());
       return `<div class="card">
         <img class="logo" src="${logoUrl}" />
         <div class="text">
@@ -216,7 +210,7 @@ function buildHtml(data, nombreKey, cargoKey, logoPath) {
 
 // Escapa caracteres especiales en HTML
 function escapeHtml(text) {
-  return String(text).replace(/[&<>"']/g, m => ({
+  return String(text).replace(/[&<>\"']/g, m => ({
     '&': '&amp;',
     '<': '&lt;',
     '>': '&gt;',
@@ -226,12 +220,17 @@ function escapeHtml(text) {
 }
 
 async function generatePdf(htmlPath, outputPdf) {
-  const browser = await puppeteer.launch({ args: ['--no-sandbox'] });
+  // Usar el Chromium que Puppeteer descargó, no necesita Chrome instalado
+  const browser = await puppeteer.launch({
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    headless: true
+  });
   const page = await browser.newPage();
   await page.goto('file://' + htmlPath, { waitUntil: 'networkidle0' });
   await page.pdf({ path: outputPdf, format: 'Letter', printBackground: true });
   await browser.close();
 }
+
 
 main().catch(err => {
   console.error(err);

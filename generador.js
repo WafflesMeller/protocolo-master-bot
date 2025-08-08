@@ -19,11 +19,11 @@ const PDFDocument = require('pdfkit');
 
 // 2. Parámetros de diseño de la tarjeta
 const CARD = {
-  width: 370,
-  height: 120,
+  width: 340,
+  height: 100,
   columns: 2,
   rows: 7,
-  gapX: 30,
+  gapX: 20,
   gapY: 20,
   margin: 20
 };

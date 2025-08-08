@@ -24,7 +24,8 @@ Uso:
 const fs = require('fs');
 const path = require('path');
 const xlsx = require('xlsx');
-const puppeteer = require('puppeteer');
+const pdf = require('html-pdf');
+// const puppeteer = require('puppeteer');  // Ya no usamos Puppeteer para PDF
 
 async function main() {
   const [,, inputFile, logoFile, outputPdf] = process.argv;
@@ -127,25 +128,23 @@ function escapeHtml(text) {
 }
 
 async function generatePdf(htmlPath, outputPdf) {
-  let browser;
-  try {
-    // Intentar usar Chromium instalado en el sistema
-    browser = await puppeteer.launch({
-      executablePath: process.env.CHROME_PATH,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-      headless: true
-    });
-  } catch (e) {
-    console.warn('No se encontró Chrome en CHROME_PATH, usando Chromium bundled de Puppeteer');
-    browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'], headless: true });
-  }
-  const page = await browser.newPage();
-  await page.goto('file://' + htmlPath, { waitUntil: 'networkidle0' });
-  await page.pdf({ path: outputPdf, format: 'Letter', printBackground: true });
-  await browser.close();
+  // Leer el HTML generado
+  const html = fs.readFileSync(htmlPath, 'utf8');
+  // Crear PDF usando html-pdf
+  return new Promise((resolve, reject) => {
+    pdf.create(html, { format: 'Letter', border: '0' })
+      .toFile(outputPdf, (err, res) => {
+        if (err) return reject(err);
+        resolve(res);
+      });
+  });
 }
 
 main().catch(err => {
   console.error(err);
   process.exit(1);
+});(err => {
+  console.error(err);
+  process.exit(1);
 });
+

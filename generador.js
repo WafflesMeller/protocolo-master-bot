@@ -19,7 +19,7 @@ const PDFDocument = require('pdfkit');
 // Parámetros de diseño de la tarjeta (ajustados para caber en Letter)
 const CARD = {
   width: 280,    // ancho reducido
-  height: 90,    // alto reducido
+  height: 95,    // alto reducido
   columns: 2,    // 2 columnas por página
   rows: 7,       // 7 filas por página
   gapX: 20,      // espacio horizontal

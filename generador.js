@@ -49,7 +49,6 @@ async function main() {
   let nombreField = headers.find(h => h.toLowerCase().includes('nombre'));
   let cargoField  = headers.find(h => h.toLowerCase().includes('cargo'));
   if (!nombreField || !cargoField) {
-    // Si no se detectan encabezados, validar exactamente 2 columnas
     if (headers.length === 2) {
       nombreField = headers[0];
       cargoField  = headers[1];
@@ -79,81 +78,21 @@ function buildHtml(data, nombreKey, cargoKey, logoPath) {
   const cardHeight = 120;
   const gap        = 30;
   const padding    = 20;
-
   const style = `
     <style>
       body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
-      .page {
-        page-break-after: always;
-        padding: ${padding/2}px ${padding}px;
-        display: flex;
-        justify-content: center;
-        flex-wrap: wrap;
-        gap: ${gap}px;
-        align-items: center;
-      }
-      .card {
-        width: ${cardWidth}px;
-        height: ${cardHeight}px;
-        border: 2px solid #0737AA;
-        box-sizing: border-box;
-        padding: 8px;
-        display: flex;
-        align-items: center;
-        position: relative;
-      }
-      .page .card:last-child:nth-child(odd) {
-        margin-right: auto;
-        margin-left: 3px;
-      }
-      .card::after {
-        content: '';
-        position: absolute;
-        right: -17px;
-        top: -15px;
-        height: calc(100% + 32px);
-        border-left: 1px dashed #999;
-      }
+      .page { page-break-after: always; padding: ${padding/2}px ${padding}px; display: flex; justify-content: center; flex-wrap: wrap; gap: ${gap}px; align-items: center; }
+      .card { width: ${cardWidth}px; height: ${cardHeight}px; border: 2px solid #0737AA; box-sizing: border-box; padding: 8px; display: flex; align-items: center; position: relative; }
+      .page .card:last-child:nth-child(odd) { margin-right: auto; margin-left: 3px; }
+      .card::after { content: ''; position: absolute; right: -17px; top: -15px; height: calc(100% + 32px); border-left: 1px dashed #999; }
       .card:nth-child(2n)::after { content: none; }
-      .card::before {
-        content: '';
-        position: absolute;
-        left: -15px;
-        bottom: -17px;
-        width: calc(100% + 32px);
-        border-top: 1px dashed #999;
-      }
+      .card::before { content: ''; position: absolute; left: -15px; bottom: -17px; width: calc(100% + 32px); border-top: 1px dashed #999; }
       .page .card:nth-last-child(-n+2)::before { content: none; }
-      .logo {
-        align-self: center;
-        flex-shrink: 0;
-        width: 110px;
-        height: auto;
-        margin-right: 12px;
-      }
-      .text {
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        text-align: center;
-        width: calc(100% - 100px - 12px);
-        height: 100%;
-      }
-      .name {
-        font-weight: bold;
-        font-size: 18px;
-        line-height: 1.2;
-        margin-bottom: 4px;
-        word-break: break-word;
-      }
-      .position {
-        font-size: 14px;
-        line-height: 1.2;
-        word-break: break-word;
-      }
+      .logo { align-self: center; flex-shrink: 0; width: 110px; height: auto; margin-right: 12px; }
+      .text { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; width: calc(100% - 100px - 12px); height: 100%; }
+      .name { font-weight: bold; font-size: 18px; line-height: 1.2; margin-bottom: 4px; word-break: break-word; }
+      .position { font-size: 14px; line-height: 1.2; word-break: break-word; }
     </style>`;
-
   const adjustScript = `
     <script>
       window.addEventListener('load', () => {
@@ -170,60 +109,36 @@ function buildHtml(data, nombreKey, cargoKey, logoPath) {
         });
       });
     </script>`;
-
   const pages = [];
   for (let i = 0; i < data.length; i += 14) pages.push(data.slice(i, i + 14));
-
   const pagesHtml = pages.map(pageData => {
     const cards = pageData.map(row => {
       const nombre = escapeHtml(String(row[nombreKey] || '').toUpperCase());
       const cargo  = escapeHtml(String(row[cargoKey]  || '').toUpperCase());
-      return `<div class="card">
-        <img class="logo" src="${logoUrl}" />
-        <div class="text">
-          <div class="name">${nombre}</div>
-          <div class="position">${cargo}</div>
-        </div>
-      </div>`;
-    }).join('\n');
-    return `<div class="page">
-      ${cards}
-    </div>`;
-  }).join('\n');
-
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  ${style}
-  ${adjustScript}
-  <title>Precedencias</title>
-</head>
-<body>
-  ${pagesHtml}
-</body>
-</html>`;
+      return `<div class="card"><img class="logo" src="${logoUrl}"/><div class="text"><div class="name">${nombre}</div><div class="position">${cargo}</div></div></div>`;
+    }).join('');
+    return `<div class="page">${cards}</div>`;
+  }).join('');
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">${style}${adjustScript}<title>Precedencias</title></head><body>${pagesHtml}</body></html>`;
 }
 
-// Escapa caracteres especiales en HTML
 function escapeHtml(text) {
-  return String(text).replace(/[&<>"']/g, m => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;'
-  }[m]));
+  return String(text).replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'' :'&#39;' })[m]);
 }
 
 async function generatePdf(htmlPath, outputPdf) {
-  // Usar Chromium instalado en el sistema via CHROME_PATH
-  const executablePath = process.env.CHROME_PATH || puppeteer.executablePath();
-  const browser = await puppeteer.launch({
-    executablePath,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    headless: true
-  });
+  let browser;
+  try {
+    // Intentar usar Chromium instalado en el sistema
+    browser = await puppeteer.launch({
+      executablePath: process.env.CHROME_PATH,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      headless: true
+    });
+  } catch (e) {
+    console.warn('No se encontró Chrome en CHROME_PATH, usando Chromium bundled de Puppeteer');
+    browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'], headless: true });
+  }
   const page = await browser.newPage();
   await page.goto('file://' + htmlPath, { waitUntil: 'networkidle0' });
   await page.pdf({ path: outputPdf, format: 'Letter', printBackground: true });

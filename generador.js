@@ -171,11 +171,8 @@ function buildHtml(data, nombreKey, cargoKey, logoPath) {
       });
     </script>`;
 
-  // Agrupar en páginas de 14 tarjetas (7 filas x 2 columnas)
   const pages = [];
-  for (let i = 0; i < data.length; i += 14) {
-    pages.push(data.slice(i, i + 14));
-  }
+  for (let i = 0; i < data.length; i += 14) pages.push(data.slice(i, i + 14));
 
   const pagesHtml = pages.map(pageData => {
     const cards = pageData.map(row => {
@@ -210,7 +207,7 @@ function buildHtml(data, nombreKey, cargoKey, logoPath) {
 
 // Escapa caracteres especiales en HTML
 function escapeHtml(text) {
-  return String(text).replace(/[&<>\"']/g, m => ({
+  return String(text).replace(/[&<>"']/g, m => ({
     '&': '&amp;',
     '<': '&lt;',
     '>': '&gt;',
@@ -220,8 +217,10 @@ function escapeHtml(text) {
 }
 
 async function generatePdf(htmlPath, outputPdf) {
-  // Usar el Chromium que Puppeteer descargó, no necesita Chrome instalado
+  // Usar Chromium instalado en el sistema via CHROME_PATH
+  const executablePath = process.env.CHROME_PATH || puppeteer.executablePath();
   const browser = await puppeteer.launch({
+    executablePath,
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
     headless: true
   });
@@ -230,7 +229,6 @@ async function generatePdf(htmlPath, outputPdf) {
   await page.pdf({ path: outputPdf, format: 'Letter', printBackground: true });
   await browser.close();
 }
-
 
 main().catch(err => {
   console.error(err);

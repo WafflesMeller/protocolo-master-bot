@@ -5,7 +5,7 @@
  *
  * Este script:
  *   1) Lee un archivo Excel (.xlsx/.xls) con columnas “nombre” y “cargo”.
- *   2) Genera un PDF con tarjetas formateadas utilizando PDFKit.
+ *   2) Genera un PDF con tarjetas formateadas utilizando PDFKit y fuentes Arial.
  *
  * Uso:
  *   node generador.js <input.xlsx> <logo.png> <output.pdf>
@@ -18,11 +18,11 @@ const PDFDocument = require('pdfkit');
 
 // Parámetros de diseño de la tarjeta
 const CARD = {
-  width: 280,    // ancho de cada tarjeta
-  height: 95,    // alto de cada tarjeta
-  gapX: 20,      // espacio horizontal entre tarjetas
-  gapY: 15,      // espacio vertical entre tarjetas
-  margin: 15     // margen de página
+  width: 280,
+  height: 95,
+  gapX: 20,
+  gapY: 15,
+  margin: 15
 };
 
 async function main() {
@@ -32,7 +32,7 @@ async function main() {
     process.exit(1);
   }
 
-  // Leer y parsear Excel
+  // Leer Excel
   const workbook = xlsx.readFile(inputFile);
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rows = xlsx.utils.sheet_to_json(sheet, { defval: '' });
@@ -41,7 +41,7 @@ async function main() {
     process.exit(1);
   }
 
-  // Detectar encabezados dinámicamente
+  // Detectar encabezados
   const headers = Object.keys(rows[0]);
   let nombreKey = headers.find(h => /nombre/i.test(h));
   let cargoKey  = headers.find(h => /cargo/i.test(h));
@@ -67,6 +67,10 @@ async function main() {
 function generatePdf(data, logoFile, outputPdf) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'LETTER', margin: CARD.margin });
+    // Registrar fuentes Arial
+    doc.registerFont('Arial', path.resolve(__dirname, 'Arial.ttf'));
+    doc.registerFont('Arial-Bold', path.resolve(__dirname, 'Arial-Bold.ttf'));
+
     const stream = fs.createWriteStream(outputPdf);
     doc.pipe(stream);
 
@@ -79,14 +83,9 @@ function generatePdf(data, logoFile, outputPdf) {
     const logoPath = path.resolve(__dirname, logoFile);
 
     // Dividir datos en páginas
-    const pages = [];
-    for (let i = 0; i < data.length; i += itemsPerPage) {
-      pages.push(data.slice(i, i + itemsPerPage));
-    }
-
-    // Procesar cada página
-    pages.forEach((pageItems, pageIndex) => {
-      if (pageIndex > 0) doc.addPage();
+    for (let p = 0; p * itemsPerPage < data.length; p++) {
+      if (p > 0) doc.addPage();
+      const pageItems = data.slice(p * itemsPerPage, p * itemsPerPage + itemsPerPage);
       pageItems.forEach((item, idx) => {
         const col = idx % columns;
         const row = Math.floor(idx / columns);
@@ -101,56 +100,61 @@ function generatePdf(data, logoFile, outputPdf) {
            .stroke()
            .restore();
 
-        // Logo
+        // Logo centrado verticalmente
         try {
-          doc.image(logoPath, x + 8, y + 8, { width: 80 });
+          const img = doc.openImage(logoPath);
+          const imgWidth = 80;
+          const imgHeight = (img.height / img.width) * imgWidth;
+          const imgY = y + (CARD.height - imgHeight) / 2;
+          doc.image(logoPath, x + 8, imgY, { width: imgWidth, height: imgHeight });
         } catch {}
 
-                // Área de texto con margen interno derecho
+        // Área de texto con padding
         const textPaddingLeft = 10;
         const textPaddingRight = 10;
         const textX = x + 8 + 80 + textPaddingLeft;
         const textW = CARD.width - (80 + 8 + textPaddingLeft + textPaddingRight);
         const spacing = 4;
 
-                        // Ajuste dinámico de nombre (máximo 2 líneas)
+        // Ajuste dinámico de nombre (hasta 2 líneas)
         let nameSize = 14;
         const minNameSize = 6;
         let nameHeight;
-        // Encontrar el tamaño máximo que permita hasta 2 líneas, asumiendo interlineado 1.2
-        for (let sz = nameSize; sz >= minNameSize; sz--) {
-          doc.font('Helvetica-Bold').fontSize(sz);
+        for (let sz = 14; sz >= minNameSize; sz--) {
+          doc.font('Arial-Bold').fontSize(sz);
           nameHeight = doc.heightOfString(item.name, { width: textW, align: 'center' });
           const lineSpacing = sz * 1.2;
-          if (nameHeight <= lineSpacing * 2) { nameSize = sz; break; }
+          const lines = Math.ceil(nameHeight / lineSpacing);
+          if (lines <= 2) { nameSize = sz; break; }
         }
-        doc.font('Helvetica-Bold').fontSize(nameSize);
+        doc.font('Arial-Bold').fontSize(nameSize);
         nameHeight = doc.heightOfString(item.name, { width: textW, align: 'center' });
 
-        // Ajuste dinámico de cargo (máximo 2 líneas)
+        // Ajuste dinámico de cargo (hasta 2 líneas)
         let posSize = 10;
         const minPosSize = 6;
         let posHeight;
-        for (let sz = posSize; sz >= minPosSize; sz--) {
-          doc.font('Helvetica').fontSize(sz);
+        for (let sz = 10; sz >= minPosSize; sz--) {
+          doc.font('Arial').fontSize(sz);
           posHeight = doc.heightOfString(item.position, { width: textW, align: 'center' });
           const lineSpacing = sz * 1.2;
-          if (posHeight <= lineSpacing * 2) { posSize = sz; break; }
+          const lines = Math.ceil(posHeight / lineSpacing);
+          if (lines <= 2) { posSize = sz; break; }
         }
-        doc.font('Helvetica').fontSize(posSize);
+        doc.font('Arial').fontSize(posSize);
         posHeight = doc.heightOfString(item.position, { width: textW, align: 'center' });
 
         // Calcular posición vertical centrada del bloque texto
         const totalTextHeight = nameHeight + spacing + posHeight;
         const textY = y + (CARD.height - totalTextHeight) / 2;
 
-        // Dibujar nombre y cargo
-        doc.font('Helvetica-Bold').fontSize(nameSize)
+        // Dibujar nombre y cargo en Arial
+        doc.font('Arial-Bold').fontSize(nameSize)
            .text(item.name, textX, textY, { width: textW, align: 'center' });
-        doc.font('Helvetica').fontSize(posSize)
+        doc.font('Arial').fontSize(posSize)
            .text(item.position, textX, textY + nameHeight + spacing, { width: textW, align: 'center' });
       });
-    });
+    }
 
     doc.end();
     stream.on('finish', resolve);

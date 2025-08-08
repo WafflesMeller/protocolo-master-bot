@@ -6,6 +6,7 @@
  * Este script:
  *   1) Lee un archivo Excel (.xlsx/.xls) con columnas “nombre” y “cargo”.
  *   2) Genera un PDF con tarjetas formateadas utilizando PDFKit y fuentes Arial.
+ *   3) Añade líneas de recorte entre filas y columnas que sobresalgan del borde.
  *
  * Uso:
  *   node generador.js <input.xlsx> <logo.png> <output.pdf>
@@ -17,13 +18,14 @@ const xlsx = require('xlsx');
 const PDFDocument = require('pdfkit');
 
 // Parámetros de diseño de la tarjeta
-const CARD = {
+typedef CARD_PARAM = { width: number, height: number, gapX: number, gapY: number, margin: number };
+const CARD = /** @type {CARD_PARAM} */ ({
   width: 280,
   height: 95,
   gapX: 20,
   gapY: 15,
   margin: 15
-};
+});
 
 async function main() {
   const [,, inputFile, logoFile, outputPdf] = process.argv;
@@ -32,138 +34,114 @@ async function main() {
     process.exit(1);
   }
 
-  // Leer Excel
+  // Leer Excel y parsear
   const workbook = xlsx.readFile(inputFile);
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rows = xlsx.utils.sheet_to_json(sheet, { defval: '' });
-  if (rows.length === 0) {
-    console.error('El archivo Excel está vacío o no se pudo leer.');
+  if (!rows.length) {
+    console.error('El archivo Excel está vacío.');
     process.exit(1);
   }
 
-  // Detectar encabezados
+  // Detectar columnas dinámicamente
   const headers = Object.keys(rows[0]);
-  let nombreKey = headers.find(h => /nombre/i.test(h));
-  let cargoKey  = headers.find(h => /cargo/i.test(h));
+  let nombreKey = headers.find(h=>/nombre/i.test(h));
+  let cargoKey  = headers.find(h=>/cargo/i.test(h));
   if (!nombreKey || !cargoKey) {
-    if (headers.length === 2) [nombreKey, cargoKey] = headers;
-    else {
-      console.error('Encabezados inválidos. Se requieren columnas "nombre" y "cargo" o exactamente 2 columnas.');
-      process.exit(1);
-    }
+    if (headers.length===2) [nombreKey,cargoKey]=headers;
+    else { console.error('Encabezados inválidos.'); process.exit(1); }
   }
 
   // Normalizar datos
-  const data = rows.map(r => ({
-    name: String(r[nombreKey] || '').toUpperCase(),
-    position: String(r[cargoKey]  || '').toUpperCase()
+  const data = rows.map(r=>({
+    name: String(r[nombreKey]).toUpperCase(),
+    position: String(r[cargoKey]).toUpperCase()
   }));
 
-  // Generar PDF
   await generatePdf(data, logoFile, outputPdf);
   console.log(`PDF generado: ${outputPdf}`);
 }
 
+/**
+ * generatePdf: genera el PDF con tarjetas y líneas de recorte
+ */
 function generatePdf(data, logoFile, outputPdf) {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'LETTER', margin: CARD.margin });
-    // Registrar fuentes Arial
-    doc.registerFont('Arial', path.resolve(__dirname, 'Arial.ttf'));
-    doc.registerFont('Arial-Bold', path.resolve(__dirname, 'Arial-Bold.ttf'));
+    const doc = new PDFDocument({ size:'LETTER', margin:CARD.margin });
+    // Registrar Arial
+    doc.registerFont('Arial', path.join(__dirname,'Arial.ttf'));
+    doc.registerFont('Arial-Bold', path.join(__dirname,'Arial-Bold.ttf'));
 
     const stream = fs.createWriteStream(outputPdf);
     doc.pipe(stream);
 
-    // Calcular columnas y filas
-    const pageWidth = doc.page.width;
-    const pageHeight = doc.page.height;
-    const columns = Math.floor((pageWidth - 2 * CARD.margin + CARD.gapX) / (CARD.width + CARD.gapX));
-    const rowsCount = Math.floor((pageHeight - 2 * CARD.margin + CARD.gapY) / (CARD.height + CARD.gapY));
-    const itemsPerPage = columns * rowsCount;
-    const logoPath = path.resolve(__dirname, logoFile);
+    const pageW = doc.page.width, pageH = doc.page.height;
+    const columns = Math.floor((pageW - 2*CARD.margin + CARD.gapX)/(CARD.width+CARD.gapX));
+    const rowsCount = Math.floor((pageH-2*CARD.margin+CARD.gapY)/(CARD.height+CARD.gapY));
+    const perPage = columns*rowsCount;
+    const logoPath = path.resolve(__dirname,logoFile);
 
-    // Dividir datos en páginas
-    for (let p = 0; p * itemsPerPage < data.length; p++) {
-      if (p > 0) doc.addPage();
-      const pageItems = data.slice(p * itemsPerPage, p * itemsPerPage + itemsPerPage);
-      pageItems.forEach((item, idx) => {
-        const col = idx % columns;
-        const row = Math.floor(idx / columns);
-        const x = CARD.margin + col * (CARD.width + CARD.gapX);
-        const y = CARD.margin + row * (CARD.height + CARD.gapY);
-
-        // Borde de tarjeta
-        doc.save()
-           .lineWidth(2)
-           .strokeColor('#0737AA')
-           .rect(x, y, CARD.width, CARD.height)
-           .stroke()
-           .restore();
-
-        // Logo centrado verticalmente
-        try {
+    // Páginas
+    for(let p=0; p*perPage<data.length; p++){
+      if(p>0) doc.addPage();
+      const pageItems = data.slice(p*perPage,p*perPage+perPage);
+      // Dibujar tarjetas
+      pageItems.forEach((item,i)=>{
+        const c = i%columns, r = Math.floor(i/columns);
+        const x = CARD.margin+c*(CARD.width+CARD.gapX);
+        const y = CARD.margin+r*(CARD.height+CARD.gapY);
+        // tarjeta
+        doc.save().lineWidth(2).strokeColor('#0737AA')
+           .rect(x,y,CARD.width,CARD.height).stroke().restore();
+        // logo centrado vertical
+        try{
           const img = doc.openImage(logoPath);
-          const imgWidth = 80;
-          const imgHeight = (img.height / img.width) * imgWidth;
-          const imgY = y + (CARD.height - imgHeight) / 2;
-          doc.image(logoPath, x + 8, imgY, { width: imgWidth, height: imgHeight });
-        } catch {}
-
-        // Área de texto con padding
-        const textPaddingLeft = 10;
-        const textPaddingRight = 10;
-        const textX = x + 8 + 80 + textPaddingLeft;
-        const textW = CARD.width - (80 + 8 + textPaddingLeft + textPaddingRight);
-        const spacing = 4;
-
-        // Ajuste dinámico de nombre (hasta 2 líneas)
-        let nameSize = 14;
-        const minNameSize = 6;
-        let nameHeight;
-        for (let sz = 14; sz >= minNameSize; sz--) {
-          doc.font('Arial-Bold').fontSize(sz);
-          nameHeight = doc.heightOfString(item.name, { width: textW, align: 'center' });
-          const lineSpacing = sz * 1.2;
-          const lines = Math.ceil(nameHeight / lineSpacing);
-          if (lines <= 2) { nameSize = sz; break; }
-        }
-        doc.font('Arial-Bold').fontSize(nameSize);
-        nameHeight = doc.heightOfString(item.name, { width: textW, align: 'center' });
-
-        // Ajuste dinámico de cargo (hasta 2 líneas)
-        let posSize = 10;
-        const minPosSize = 6;
-        let posHeight;
-        for (let sz = 10; sz >= minPosSize; sz--) {
-          doc.font('Arial').fontSize(sz);
-          posHeight = doc.heightOfString(item.position, { width: textW, align: 'center' });
-          const lineSpacing = sz * 1.2;
-          const lines = Math.ceil(posHeight / lineSpacing);
-          if (lines <= 2) { posSize = sz; break; }
-        }
-        doc.font('Arial').fontSize(posSize);
-        posHeight = doc.heightOfString(item.position, { width: textW, align: 'center' });
-
-        // Calcular posición vertical centrada del bloque texto
-        const totalTextHeight = nameHeight + spacing + posHeight;
-        const textY = y + (CARD.height - totalTextHeight) / 2;
-
-        // Dibujar nombre y cargo en Arial
-        doc.font('Arial-Bold').fontSize(nameSize)
-           .text(item.name, textX, textY, { width: textW, align: 'center' });
-        doc.font('Arial').fontSize(posSize)
-           .text(item.position, textX, textY + nameHeight + spacing, { width: textW, align: 'center' });
+          const iw=80, ih=img.height/img.width*iw;
+          doc.image(logoPath, x+8, y+(CARD.height-ih)/2, {width:iw});
+        }catch{}
+        // área texto
+        const padL=10, padR=10, spacing=4;
+        const tx = x+8+80+padL, tw = CARD.width-(80+8+padL+padR);
+        // nombre ajustable hasta 2 líneas
+        let ns=14, nh;
+        for(let sz=14; sz>=6; sz--){doc.font('Arial-Bold').fontSize(sz);
+          nh = doc.heightOfString(item.name,{width:tw,align:'center'});
+          if(nh<=sz*1.2*2){ns=sz;break;}}
+        doc.font('Arial-Bold').fontSize(ns);
+        nh = doc.heightOfString(item.name,{width:tw,align:'center'});
+        // cargo ajustable
+        let ps=10, ph;
+        for(let sz=10; sz>=6; sz--){doc.font('Arial').fontSize(sz);
+          ph=doc.heightOfString(item.position,{width:tw,align:'center'});
+          if(ph<=sz*1.2*2){ps=sz;break;}}
+        doc.font('Arial').fontSize(ps);
+        ph=doc.heightOfString(item.position,{width:tw,align:'center'});
+        // centrar vertical texto
+        const th=nh+spacing+ph, ty=y+(CARD.height-th)/2;
+        doc.font('Arial-Bold').fontSize(ns)
+           .text(item.name,tx,ty,{width:tw,align:'center'});
+        doc.font('Arial').fontSize(ps)
+           .text(item.position,tx,ty+nh+spacing,{width:tw,align:'center'});
       });
+      // líneas de recorte
+      doc.save().lineWidth(0.5).strokeColor('#999').dash(5,{space:5});
+      // verticales
+      for(let c=1;c<columns;c++){
+        const xL=CARD.margin+c*(CARD.width+CARD.gapX)-CARD.gapX/2;
+        doc.moveTo(xL,CARD.margin-5).lineTo(xL,pageH-CARD.margin+5).stroke();
+      }
+      // horizontales
+      for(let r=1;r<rowsCount;r++){
+        const yL=CARD.margin+r*(CARD.height+CARD.gapY)-CARD.gapY/2;
+        doc.moveTo(CARD.margin-5,yL).lineTo(pageW-CARD.margin+5,yL).stroke();
+      }
+      doc.undash().restore();
     }
 
     doc.end();
-    stream.on('finish', resolve);
-    stream.on('error', reject);
+    stream.on('finish',resolve);
+    stream.on('error',reject);
   });
 }
 
-// Ejecutar
-main().catch(err => {
-  console.error('Error generando PDF:', err);
-  process.exit(1);
-});
+main().catch(e=>{console.error('Error:',e);process.exit(1);});
